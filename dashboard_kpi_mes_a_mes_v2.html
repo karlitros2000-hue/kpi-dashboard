@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Control y análisis de KPI mensuales</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    :root{
+      --bg:#eef2f7; --panel:#ffffff; --line:#dfe6ef; --text:#243b63; --muted:#71839e;
+      --nav:#1f4377; --nav-2:#274f89; --green:#72bf8c; --green-soft:#e6f6eb;
+      --teal:#7ec5b9; --teal-soft:#e5f5f2; --yellow:#efd36e; --yellow-soft:#fff4d8;
+      --orange:#ef9b4a; --orange-soft:#fee9d6; --red:#e97a5f; --red-soft:#fee4dc;
+      --shadow:0 10px 30px rgba(29,53,87,.08); --radius:16px;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,"Segoe UI",Roboto,Arial,sans-serif;background:linear-gradient(180deg,#f4f7fb 0%, #edf2f7 100%);color:var(--text)}
+    .page{max-width:1240px;margin:28px auto;padding:0 14px 24px}
+    .dashboard{background:rgba(255,255,255,.32);border-radius:22px}
+    .topbar{background:linear-gradient(180deg,var(--nav-2),var(--nav));color:#fff;border-radius:18px 18px 0 0;box-shadow:var(--shadow);overflow:hidden;border:1px solid rgba(255,255,255,.12)}
+    .topbar-main{padding:18px 22px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+    .title{font-size:24px;font-weight:800;letter-spacing:.2px}
+    .actions{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+    .btn,.selector{border:none;background:#fff;color:var(--nav);font-weight:700;padding:11px 18px;border-radius:999px;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.08) inset, 0 2px 8px rgba(0,0,0,.08);transition:.2s ease}
+    .selector{padding-right:40px}
+    .btn:hover{transform:translateY(-1px)}
+    .btn.secondary{background:#f7fbff}
+    .topbar-sub{padding:10px 22px;font-size:13px;color:#d9e7ff;border-top:1px solid rgba(255,255,255,.14);background:rgba(0,0,0,.08)}
+    .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px;padding:14px 0}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+    .pad{padding:18px}
+    .card-title{font-size:15px;font-weight:800;color:#2d4770;margin:0 0 14px;text-transform:uppercase;letter-spacing:.3px}
+    .metric{min-height:176px;display:flex;flex-direction:column;justify-content:space-between}
+    .metric h3{font-size:18px;margin:0;font-weight:800;color:#324c73}
+    .metric .value{text-align:center;font-size:58px;line-height:1;font-weight:800;padding:14px 0 8px;color:#17325c}
+    .metric .value.small{font-size:34px}
+    .metric .foot{text-align:center;padding:12px 14px;font-size:15px;font-weight:700;color:#557086;border-top:1px solid var(--line)}
+    .metric.success .foot{background:linear-gradient(180deg,#d4f0db,#b9e3c6)}
+    .metric.info .foot{background:linear-gradient(180deg,#e1f0ef,#d1ece9)}
+    .metric.warn .foot{background:linear-gradient(180deg,#fff3cf,#f9e5a7)}
+    .metric.risk .foot{background:linear-gradient(180deg,#fde8d7,#f7d5b1)}
+    .metric.risk .value{color:#de5d2a}
+    .span-3{grid-column:span 3}.span-4{grid-column:span 4}.span-5{grid-column:span 5}.span-6{grid-column:span 6}.span-8{grid-column:span 8}.span-12{grid-column:span 12}
+    .security-wrap{display:flex;align-items:center;gap:18px;padding:8px 0 14px;min-height:108px}
+    .shield{width:72px;height:72px;border-radius:50%;background:linear-gradient(180deg,#4db174,#2d9960);display:grid;place-items:center;color:#fff;font-size:38px;box-shadow:inset 0 -8px 18px rgba(0,0,0,.12);flex:0 0 auto}
+    .security-value{font-size:24px;font-weight:800;color:#203b69}
+    .subnote{color:var(--muted);font-size:13px;line-height:1.55}
+    .score-big{font-size:54px;font-weight:800;line-height:1;margin:8px 0 18px;color:#18345f}
+    table{width:100%;border-collapse:collapse;font-size:14px}
+    th{background:var(--nav);color:#fff;padding:12px 10px;text-align:left;font-size:14px}
+    td{padding:11px 10px;border-bottom:1px solid var(--line);color:#35506f;font-weight:600;vertical-align:top}
+    td.center, th.center{text-align:center}
+    .tag{display:inline-block;min-width:92px;text-align:center;padding:7px 10px;border-radius:10px;font-weight:800}
+    .tag.ok{background:#e4f4e9;color:#3b9363}
+    .tag.partial{background:#fee9d7;color:#df7a2b}
+    .tag.review{background:#fff4d1;color:#b6871a}
+    .tag.risk{background:#fde4dc;color:#c45a38}
+    .list-stack{display:flex;flex-direction:column;gap:12px}
+    .alert-item, .rule-item{display:flex;align-items:flex-start;gap:10px;color:#35506f;font-weight:700}
+    .dot, .diamond, .square, .hollow{width:12px;height:12px;margin-top:4px;flex:0 0 auto}
+    .dot{border-radius:50%; background:#9fd5c8}
+    .diamond{background:#ef9b4a; transform:rotate(45deg); border-radius:2px}
+    .square{background:#efd36e; border-radius:3px}
+    .hollow{border:2px solid #7bc293; border-radius:50%; background:transparent}
+    .mini-stat{font-size:20px;font-weight:800;margin-bottom:4px}
+    .download-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .ghost-btn{background:#f8fbff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-weight:800;color:#446185;cursor:pointer}
+    .ghost-btn.small{padding:11px 12px; min-width:42px}
+    .chart-card{padding:14px 16px 16px}
+    .chart-title{font-size:15px;font-weight:800;text-transform:uppercase;margin:0 0 12px;color:#2d4770}
+    .chart{height:320px;padding:16px 10px 6px 58px;position:relative;border-top:1px solid var(--line);background:repeating-linear-gradient(to top, #ffffff 0, #ffffff 58px, #edf2f8 59px, #edf2f8 60px);border-radius:10px}
+    .ylabels{position:absolute;left:8px;top:10px;bottom:12px;display:flex;flex-direction:column-reverse;justify-content:space-between;font-size:12px;color:#7b8ca4;font-weight:700}
+    .bars{height:100%;display:flex;align-items:flex-end;gap:18px}
+    .bar-group{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:10px;height:100%}
+    .bar-wrap{height:220px;width:100%;display:flex;align-items:flex-end;justify-content:center}
+    .bar{display:block;width:100%;max-width:74px;min-height:4px;border-radius:10px 10px 0 0;box-shadow:inset 0 -10px 20px rgba(255,255,255,.16);background:linear-gradient(180deg,#78b68a,#4da66e);border:1px solid rgba(40,90,60,.08)}
+    .bar.teal{background:linear-gradient(180deg,#8cc8bf,#5ea89b)}
+    .bar.soft{background:linear-gradient(180deg,#bfd8c1,#91b894)}
+    .bar.orange{background:linear-gradient(180deg,#f7b15e,#ef973e)}
+    .bar.yellow{background:linear-gradient(180deg,#f6de7c,#eac24b)}
+    .bar.red{background:linear-gradient(180deg,#f0a28d,#df6e53)}
+    .xlabel{font-size:12px;line-height:1.2;text-align:center;color:#5b6f8b;font-weight:700;min-height:34px;max-width:110px}
+    .file-tile{display:flex;align-items:center;gap:10px;padding:15px 16px;font-weight:800;color:#446185}
+    .file-icon{font-size:18px}
+    .muted{color:var(--muted);font-size:13px;line-height:1.45;font-weight:600}
+    .pill{display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border-radius:999px;background:#f3f7fc;border:1px solid var(--line);font-weight:800;color:#496583}
+    input[type="file"]{display:none}
+    .empty{padding:22px;border:1px dashed #c8d4e4;border-radius:14px;background:#f9fbfe;color:#69809e;font-weight:700}
+    @media (max-width:1100px){.span-3,.span-4,.span-5,.span-6,.span-8{grid-column:span 12}.metric{min-height:150px}.chart{height:290px}}
+    @media print{body{background:#fff}.page{max-width:none;margin:0;padding:0}.btn, .selector, input[type="file"]{display:none!important}.dashboard{background:#fff}.card,.topbar{box-shadow:none}}
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="dashboard">
+      <header class="topbar">
+        <div class="topbar-main">
+          <div class="title">Control y análisis de KPI mensuales</div>
+          <div class="actions">
+            <label class="btn secondary" for="fileInput">Cargar Excel</label>
+            <select id="monthSelect" class="selector" disabled>
+              <option value="">Seleccionar mes</option>
+            </select>
+            <button class="btn" id="savePdfBtn">Guardar PDF</button>
+          </div>
+        </div>
+        <div class="topbar-sub" id="statusLine">Carga tu planilla Excel. El tablero leerá la hoja <strong>DATA_KPI</strong> y mostrará un solo mes a la vez.</div>
+      </header>
+
+      <input id="fileInput" type="file" accept=".xlsx,.xls,.csv" />
+
+      <section class="grid">
+        <div class="card metric success span-3">
+          <div class="pad">
+            <h3>Cumplimiento General KPI</h3>
+            <div class="value" id="generalScore">--</div>
+          </div>
+          <div class="foot">Ponderado por score y peso</div>
+        </div>
+
+        <div class="card metric info span-3">
+          <div class="pad">
+            <h3>KPI CUMPLIDOS</h3>
+            <div class="value small" id="fulfilledCount">--</div>
+          </div>
+          <div class="foot">Indicadores en verde</div>
+        </div>
+
+        <div class="card metric warn span-3">
+          <div class="pad">
+            <h3>KPI EN REVISIÓN</h3>
+            <div class="value" id="reviewCount">--</div>
+          </div>
+          <div class="foot">Sin resultado o pendientes</div>
+        </div>
+
+        <div class="card metric risk span-3">
+          <div class="pad">
+            <h3>KPI PARCIALES / RIESGO</h3>
+            <div class="value" id="riskCount">--</div>
+          </div>
+          <div class="foot">Indicadores bajo meta</div>
+        </div>
+
+        <div class="card span-6">
+          <div class="pad">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+              <div style="width:4px;height:28px;background:#7ac68f;border-radius:99px"></div>
+              <h2 style="margin:0;font-size:18px;color:#28466f">Resumen del período</h2>
+            </div>
+            <div class="security-wrap">
+              <div class="shield" id="summaryIcon">✓</div>
+              <div class="security-value" id="summaryText">Carga una planilla</div>
+            </div>
+            <div class="subnote" id="summaryNote1">El tablero mostrará el mes seleccionado y recalculará el estado de cada KPI.</div>
+            <div class="subnote" id="summaryNote2">Sirve para revisión rápida en comité o seguimiento mensual.</div>
+          </div>
+        </div>
+
+        <div class="card span-6">
+          <div class="pad">
+            <div class="card-title" style="margin-bottom:10px">PROMEDIO SCORE</div>
+            <div class="score-big" id="avgScore">--</div>
+            <div class="muted" id="avgScoreSub">Solo KPI con meta y resultado</div>
+          </div>
+        </div>
+
+        <div class="card span-8">
+          <div class="pad" style="padding-bottom:12px">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+              <div class="card-title" style="margin-bottom:0">CONTROL DE CUMPLIMIENTO KPI</div>
+              <div class="pill" id="monthPill">Sin mes seleccionado</div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>KPI</th>
+                  <th class="center">Resultado</th>
+                  <th class="center">Meta</th>
+                  <th class="center">Score</th>
+                  <th class="center">Estado</th>
+                </tr>
+              </thead>
+              <tbody id="kpiTableBody">
+                <tr><td colspan="5"><div class="empty">Carga tu archivo Excel para poblar esta tabla.</div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card span-4">
+          <div class="pad">
+            <div class="card-title">PANEL DE ALERTAS</div>
+            <div class="mini-stat" id="criticalStat">Críticas 0</div>
+            <div class="mini-stat" style="margin-bottom:14px" id="warningStat">Advertencias 0</div>
+            <div class="list-stack" id="alertsList">
+              <div class="muted">Aquí aparecerán los KPI que requieran atención.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card span-8 chart-card">
+          <h3 class="chart-title">CUMPLIMIENTO KPI (%)</h3>
+          <div class="chart">
+            <div class="ylabels">
+              <span>0</span><span>20</span><span>40</span><span>60</span><span>80</span><span>100</span><span>120</span>
+            </div>
+            <div class="bars" id="chartCompliance"></div>
+          </div>
+        </div>
+
+        <div class="card span-4">
+          <div class="pad">
+            <div class="card-title">REGLAS INTELIGENTES</div>
+            <div class="list-stack">
+              <div class="rule-item"><span style="width:3px;height:20px;background:#4f698f;border-radius:99px"></span><span><strong>Mayor</strong><br><span class="muted">El KPI cumple cuando el resultado es igual o superior a la meta.</span></span></div>
+              <div class="rule-item"><span style="width:3px;height:20px;background:#4f698f;border-radius:99px"></span><span><strong>Menor</strong><br><span class="muted">El KPI cumple cuando el resultado es igual o inferior a la meta.</span></span></div>
+              <div class="rule-item"><span style="width:3px;height:20px;background:#4f698f;border-radius:99px"></span><span><strong>En revisión</strong><br><span class="muted">Se marca así cuando no hay resultado o falta validación del dato.</span></span></div>
+              <div class="rule-item"><span style="width:3px;height:20px;background:#4f698f;border-radius:99px"></span><span><strong>Score ponderado</strong><br><span class="muted">El tablero calcula promedio simple y ponderado usando la columna Peso.</span></span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card span-8 chart-card">
+          <h3 class="chart-title">ESTADO KPI</h3>
+          <div class="chart" style="height:300px">
+            <div class="ylabels">
+              <span>0%</span><span>20%</span><span>40%</span><span>60%</span><span>80%</span><span>100%</span>
+            </div>
+            <div class="bars" id="chartStatus"></div>
+          </div>
+        </div>
+
+        <div class="span-4" style="display:grid;gap:14px">
+          <div class="card">
+            <div class="pad">
+              <div class="download-row">
+                <button class="ghost-btn" id="savePdfBtn2">🖨 Guardar resumen</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="file-tile"><span class="file-icon">📁</span> <span id="fileNameTile">Planilla no cargada</span></div>
+          </div>
+
+          <div class="card">
+            <div class="pad">
+              <div class="card-title">OBSERVACIONES DEL MES</div>
+              <div class="list-stack" id="observationsList">
+                <div class="muted">Las observaciones de los KPI del mes aparecerán aquí.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card span-8">
+          <div class="pad">
+            <div class="download-row">
+              <button class="ghost-btn" id="clearBtn">Limpiar tablero</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const state = { fileName:'', rows:[], months:[], currentMonth:'' };
+
+    const ids = id => document.getElementById(id);
+    ids('savePdfBtn').addEventListener('click', () => window.print());
+    ids('savePdfBtn2').addEventListener('click', () => window.print());
+    ids('clearBtn').addEventListener('click', clearDashboard);
+    ids('monthSelect').addEventListener('change', e => {
+      state.currentMonth = e.target.value;
+      renderMonth();
+    });
+
+    function clearDashboard(){
+      state.fileName = '';
+      state.rows = [];
+      state.months = [];
+      state.currentMonth = '';
+      ids('fileInput').value = '';
+      ids('monthSelect').innerHTML = '<option value="">Seleccionar mes</option>';
+      ids('monthSelect').disabled = true;
+      ids('fileNameTile').textContent = 'Planilla no cargada';
+      ids('statusLine').innerHTML = 'Carga tu planilla Excel. El tablero leerá la hoja <strong>DATA_KPI</strong> y mostrará un solo mes a la vez.';
+      ids('monthPill').textContent = 'Sin mes seleccionado';
+      ids('generalScore').textContent = '--';
+      ids('fulfilledCount').textContent = '--';
+      ids('reviewCount').textContent = '--';
+      ids('riskCount').textContent = '--';
+      ids('avgScore').textContent = '--';
+      ids('avgScoreSub').textContent = 'Solo KPI con meta y resultado';
+      ids('summaryIcon').textContent = '✓';
+      ids('summaryText').textContent = 'Carga una planilla';
+      ids('summaryNote1').textContent = 'El tablero mostrará el mes seleccionado y recalculará el estado de cada KPI.';
+      ids('summaryNote2').textContent = 'Sirve para revisión rápida en comité o seguimiento mensual.';
+      ids('kpiTableBody').innerHTML = '<tr><td colspan="5"><div class="empty">Carga tu archivo Excel para poblar esta tabla.</div></td></tr>';
+      ids('alertsList').innerHTML = '<div class="muted">Aquí aparecerán los KPI que requieran atención.</div>';
+      ids('observationsList').innerHTML = '<div class="muted">Las observaciones de los KPI del mes aparecerán aquí.</div>';
+      ids('chartCompliance').innerHTML = '';
+      ids('chartStatus').innerHTML = '';
+      ids('criticalStat').textContent = 'Críticas 0';
+      ids('warningStat').textContent = 'Advertencias 0';
+    }
+
+    function toNumber(value){
+      if (value === null || value === undefined || value === '') return null;
+      if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+      let text = String(value).trim();
+      if (!text) return null;
+      text = text.replace(/\s/g,'');
+      // 1.234,56 => 1234.56 | 123,45 => 123.45
+      if (text.includes(',') && text.includes('.')) {
+        text = text.replace(/\./g,'').replace(',', '.');
+      } else if (text.includes(',')) {
+        text = text.replace(',', '.');
+      }
+      const num = Number(text);
+      return Number.isFinite(num) ? num : null;
+    }
+
+    function cleanText(value){
+      return value === null || value === undefined ? '' : String(value).trim();
+    }
+
+    function formatPeriod(period){
+      const raw = cleanText(period);
+      if (/^\d{4}-\d{2}$/.test(raw)){
+        const [y,m] = raw.split('-');
+        const names = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+        return `${names[Number(m)-1] || raw} ${y}`;
+      }
+      return raw || 'Sin período';
+    }
+
+    function formatValue(value, unit=''){
+      const num = toNumber(value);
+      if (num === null) return '--';
+      const normalizedUnit = cleanText(unit).toLowerCase();
+      if (normalizedUnit === '%'){
+        return `${(num*100).toFixed(1).replace('.0','')}%`;
+      }
+      if (Math.abs(num) >= 1000 && normalizedUnit !== '%'){
+        return num.toLocaleString('es-CL', {maximumFractionDigits: 2});
+      }
+      if (Number.isInteger(num)) return String(num);
+      return num.toLocaleString('es-CL', {minimumFractionDigits: 0, maximumFractionDigits: 2});
+    }
+
+    function normalizeStatus(status, result, meta, sentido){
+      const explicit = cleanText(status).toLowerCase();
+      if (explicit) {
+        if (explicit.includes('revisi')) return 'En revisión';
+        if (explicit.includes('cumple')) return 'Cumple';
+        if (explicit.includes('parcial')) return 'Parcial';
+        if (explicit.includes('riesgo')) return 'Riesgo';
+        if (explicit.includes('no cumple')) return 'Riesgo';
+      }
+      const r = toNumber(result);
+      const m = toNumber(meta);
+      const s = cleanText(sentido).toLowerCase();
+      if (r === null || m === null) return 'En revisión';
+      let score = 0;
+      if (s.includes('menor')) {
+        if (m === 0) score = r === 0 ? 1 : 0;
+        else score = Math.min(m / Math.max(r, 0.0000001), 1.2);
+      } else {
+        if (m === 0) score = r === 0 ? 1 : 1.2;
+        else score = Math.min(r / m, 1.2);
+      }
+      if (score >= 1) return 'Cumple';
+      if (score >= 0.8) return 'Parcial';
+      return 'Riesgo';
+    }
+
+    function computeScore(row){
+      const explicit = toNumber(row.Score);
+      if (explicit !== null) return explicit;
+      const r = toNumber(row.Resultado);
+      const m = toNumber(row.Meta);
+      const s = cleanText(row.Sentido).toLowerCase();
+      if (r === null || m === null) return null;
+      if (s.includes('menor')) {
+        if (m === 0) return r === 0 ? 1 : 0;
+        return Math.min(m / Math.max(r, 0.0000001), 1.2);
+      }
+      if (m === 0) return r === 0 ? 1 : 1.2;
+      return Math.min(r / m, 1.2);
+    }
+
+    function barClassByStatus(status){
+      if (status === 'Cumple') return 'bar';
+      if (status === 'Parcial') return 'bar orange';
+      if (status === 'En revisión') return 'bar yellow';
+      return 'bar red';
+    }
+
+    function tagClassByStatus(status){
+      if (status === 'Cumple') return 'tag ok';
+      if (status === 'Parcial') return 'tag partial';
+      if (status === 'En revisión') return 'tag review';
+      return 'tag risk';
+    }
+
+    function dotForStatus(status){
+      if (status === 'Cumple') return '<span class="dot" style="background:#86c88c"></span>';
+      if (status === 'Parcial') return '<span class="diamond"></span>';
+      if (status === 'En revisión') return '<span class="square"></span>';
+      return '<span class="dot" style="background:#e97a5f"></span>';
+    }
+
+    function parseRows(jsonRows){
+      return jsonRows.map(row => {
+        const out = {};
+        Object.keys(row).forEach(key => out[cleanText(key)] = row[key]);
+        return out;
+      }).filter(r => cleanText(r.Periodo) && cleanText(r.KPI));
+    }
+
+    function populateMonthSelect(){
+      const select = ids('monthSelect');
+      select.innerHTML = '<option value="">Seleccionar mes</option>';
+      state.months.forEach(month => {
+        const opt = document.createElement('option');
+        opt.value = month;
+        opt.textContent = formatPeriod(month);
+        select.appendChild(opt);
+      });
+      select.disabled = state.months.length === 0;
+    }
+
+    function renderMonth(){
+      const month = state.currentMonth || state.months[0];
+      if (!month) return;
+      state.currentMonth = month;
+      ids('monthSelect').value = month;
+      const monthRows = state.rows.filter(r => cleanText(r.Periodo) === month);
+
+      const normalized = monthRows.map(r => {
+        const score = computeScore(r);
+        const status = normalizeStatus(r.Estado, r.Resultado, r.Meta, r.Sentido);
+        const peso = toNumber(r.Peso) ?? 1;
+        return {...r, _score:score, _status:status, _peso:peso};
+      });
+
+      const total = normalized.length;
+      const fulfills = normalized.filter(r => r._status === 'Cumple').length;
+      const review = normalized.filter(r => r._status === 'En revisión').length;
+      const partial = normalized.filter(r => r._status === 'Parcial').length;
+      const risk = normalized.filter(r => r._status === 'Riesgo').length;
+      const riskTotal = partial + risk;
+
+      const validScores = normalized.filter(r => r._score !== null);
+      const avg = validScores.length ? validScores.reduce((a,b)=>a+b._score,0) / validScores.length : null;
+      const weightedDen = validScores.reduce((a,b)=>a+b._peso,0);
+      const weighted = weightedDen ? validScores.reduce((a,b)=>a+(b._score*b._peso),0) / weightedDen : null;
+
+      ids('generalScore').textContent = weighted !== null ? `${(weighted*100).toFixed(1).replace('.0','')} %` : '--';
+      ids('fulfilledCount').textContent = `${fulfills} de ${total}`;
+      ids('reviewCount').textContent = String(review);
+      ids('riskCount').textContent = String(riskTotal);
+      ids('avgScore').textContent = avg !== null ? `${(avg*100).toFixed(1).replace('.0','')}%` : '--';
+      ids('avgScoreSub').textContent = validScores.length ? `${validScores.length} KPI con score calculado` : 'Sin KPI con score calculado';
+      ids('monthPill').textContent = formatPeriod(month);
+      ids('fileNameTile').textContent = state.fileName || 'Planilla cargada';
+      ids('statusLine').innerHTML = `Archivo cargado: <strong>${state.fileName}</strong> · Hoja leída: <strong>DATA_KPI</strong> · Mes visible: <strong>${formatPeriod(month)}</strong>`;
+
+      let summaryText = 'Mes bajo control';
+      let icon = '✓';
+      let note1 = `${fulfills} KPI cumplen, ${review} están en revisión y ${riskTotal} requieren atención.`;
+      let note2 = weighted !== null ? `Cumplimiento ponderado del mes: ${(weighted*100).toFixed(1).replace('.0','')}%.` : 'No hay suficiente información para calcular el cumplimiento ponderado.';
+      if (risk > 0) {
+        summaryText = `${risk} KPI en riesgo`;
+        icon = '!';
+      } else if (partial > 0) {
+        summaryText = `${partial} KPI parciales`;
+        icon = '•';
+      } else if (review > 0) {
+        summaryText = `${review} KPI en revisión`;
+        icon = '…';
+      }
+      ids('summaryIcon').textContent = icon;
+      ids('summaryText').textContent = summaryText;
+      ids('summaryNote1').textContent = note1;
+      ids('summaryNote2').textContent = note2;
+
+      renderTable(normalized);
+      renderAlerts(normalized);
+      renderObservations(normalized);
+      renderCharts(normalized);
+    }
+
+    function renderTable(rows){
+      const tbody = ids('kpiTableBody');
+      if (!rows.length){
+        tbody.innerHTML = '<tr><td colspan="5"><div class="empty">No hay KPI para el mes seleccionado.</div></td></tr>';
+        return;
+      }
+      tbody.innerHTML = rows.map(r => `
+        <tr>
+          <td>${cleanText(r.KPI)}</td>
+          <td class="center">${formatValue(r.Resultado, r.Unidad)}</td>
+          <td class="center">${formatValue(r.Meta, r.Unidad)}</td>
+          <td class="center">${r._score !== null ? (r._score*100).toFixed(1).replace('.0','') + '%' : '--'}</td>
+          <td class="center"><span class="${tagClassByStatus(r._status)}">${r._status}</span></td>
+        </tr>
+      `).join('');
+    }
+
+    function renderAlerts(rows){
+      const critical = rows.filter(r => r._status === 'Riesgo');
+      const warnings = rows.filter(r => r._status === 'Parcial' || r._status === 'En revisión');
+      ids('criticalStat').textContent = `Críticas ${critical.length}`;
+      ids('warningStat').textContent = `Advertencias ${warnings.length}`;
+      const list = ids('alertsList');
+      const items = [...critical, ...warnings].slice(0,6);
+      if (!items.length){
+        list.innerHTML = '<div class="muted">Sin alertas para este período.</div>';
+        return;
+      }
+      list.innerHTML = items.map(r => `<div class="alert-item">${dotForStatus(r._status)}<span>${cleanText(r.KPI)} <span class="muted">(${r._status})</span></span></div>`).join('');
+    }
+
+    function renderObservations(rows){
+      const obs = rows.filter(r => cleanText(r.Observacion));
+      const target = ids('observationsList');
+      if (!obs.length){
+        target.innerHTML = '<div class="muted">No hay observaciones registradas para este mes.</div>';
+        return;
+      }
+      target.innerHTML = obs.slice(0,6).map(r => `<div class="alert-item">${dotForStatus(r._status)}<span><strong>${cleanText(r.KPI)}</strong><br><span class="muted">${cleanText(r.Observacion)}</span></span></div>`).join('');
+    }
+
+    function makeBar(label, heightPercent, status, titleText=''){
+      const numericHeight = Number.isFinite(heightPercent) ? heightPercent : 0;
+      const safeHeight = Math.max(0, Math.min(numericHeight, 100));
+      return `<div class="bar-group" title="${titleText}">
+        <div class="bar-wrap"><div class="${barClassByStatus(status)}" style="height:${safeHeight}%"></div></div>
+        <div class="xlabel">${label}</div>
+      </div>`;
+    }
+
+    function renderCharts(rows){
+      const comp = ids('chartCompliance');
+      const status = ids('chartStatus');
+      if (!rows.length){ comp.innerHTML = ''; status.innerHTML = ''; return; }
+
+      comp.innerHTML = rows.map(r => {
+        const pct = r._score !== null ? Math.min(r._score * 100, 120) : 0;
+        const display = r._score !== null ? `${(r._score*100).toFixed(1).replace('.0','')}%` : 'Sin dato';
+        return makeBar(cleanText(r.KPI).replace(/\s+/g,'<br>'), pct/1.2, r._status, `${cleanText(r.KPI)}: ${display}`);
+      }).join('');
+
+      status.innerHTML = rows.map(r => {
+        const map = {'Cumple':100,'Parcial':67,'En revisión':33,'Riesgo':15};
+        return makeBar(cleanText(r.KPI).replace(/\s+/g,'<br>'), map[r._status] ?? 0, r._status, `${cleanText(r.KPI)}: ${r._status}`);
+      }).join('');
+    }
+
+    ids('fileInput').addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      state.fileName = file.name;
+      try {
+        const data = await file.arrayBuffer();
+        let workbook;
+        if (file.name.toLowerCase().endsWith('.csv')) {
+          const text = new TextDecoder('utf-8').decode(data);
+          workbook = XLSX.read(text, {type:'string'});
+        } else {
+          workbook = XLSX.read(data, {type:'array'});
+        }
+        const targetSheet = workbook.SheetNames.find(n => n.trim().toUpperCase() === 'DATA_KPI');
+        if (!targetSheet) {
+          alert('No encontré la hoja DATA_KPI en el archivo.');
+          return;
+        }
+        const sheet = workbook.Sheets[targetSheet];
+        const jsonRows = XLSX.utils.sheet_to_json(sheet, {defval:'', raw:true});
+        const rows = parseRows(jsonRows);
+        if (!rows.length) {
+          alert('La hoja DATA_KPI no trae filas con datos válidos.');
+          return;
+        }
+        state.rows = rows;
+        state.months = [...new Set(rows.map(r => cleanText(r.Periodo)))].filter(Boolean).sort();
+        populateMonthSelect();
+        state.currentMonth = state.months[state.months.length - 1];
+        renderMonth();
+      } catch (err) {
+        console.error(err);
+        alert('No pude leer la planilla. Revisa que sea un Excel válido y que la hoja DATA_KPI exista.');
+      }
+    });
+
+    // demo visual inicial
+    clearDashboard();
+  </script>
+</body>
+</html>
